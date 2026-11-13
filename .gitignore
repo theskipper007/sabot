@@ -7,3 +7,4 @@ __pycache__/
 results.dry.json
 report.dry.txt
 .env
+run.log
