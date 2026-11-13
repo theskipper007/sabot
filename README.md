@@ -9,9 +9,13 @@ sabot also measures the suite's **noise floor**: it reruns the unmutated suite *
 and reports the run-to-run σ and the **minimum detectable effect (MDE)**. That lets you
 tell "the suite can't see this" apart from "the suite could see it, but it's buried in noise".
 
-> **Status: research prototype, v0.1.** The results in `results.json` / `report.txt` come
-> from one real run, described under [Results](#results). Read [Limits](#limits) before
-> quoting them.
+> **Status: research prototype, v0.1.** Repo: https://github.com/theskipper007/sabot
+>
+> It works end to end on Windows 11 / Python 3.12 with the Anthropic backend (`--dry-run`,
+> the tests and one real run). The `ollama` backend is implemented but **untested**.
+> If something doesn't work for you, please open an issue or tell the author, Arun MV.
+> The results in `results.json` / `report.txt` come from one real run, described under
+> [Results](#results). Read [Limits](#limits) before quoting them.
 
 ## What it does
 
@@ -159,7 +163,68 @@ API calls, never cache copies of each other.
 
 ## Results
 
-_Filled in from the actual run. See `report.txt` and `results.json`._
+From one real run on 2026-11-13: Anthropic API, system model `claude-haiku-5-5`, downgrade
+tier `claude-haiku-4-5`, `anthropic-python` 2.8.0, code at commit `024f0d9`. Full numbers
+are in [`results.json`](results.json) and [`report.txt`](report.txt); run logs are in
+[`runs/`](runs/).
+
+**Noise floor** (k = 5 reruns of the unmutated suite; σ is run-to-run):
+
+| sub-suite | n | baseline pass rate (5 runs) | σ_run | MDE_run | MDE_sample |
+|---|---|---|---|---|---|
+| rag | 60 | 41.7 / 43.3 / 41.7 / 40.0 / 45.0 → mean 42.3% | 1.90 pts | 6.4 pts | 22.4 pts |
+| agent | 20 | 80 / 80 / 80 / 75 / 80 → mean 79.0% | 2.24 pts | 7.5 pts | 32.0 pts |
+
+**Mutants:** 15 run, **4 killed, 11 escaped (73%)**, 1 N/A (M2).
+
+| id | mutant | Δ pts (+ = worse) | critical | verdict | witness: what the mutant actually did |
+|---|---|---|---|---|---|
+| P1 | delete constraint word | −1.0 | 4.4 | escaped | 5% of answers changed |
+| P2 | remove grounding instruction | **−19.3** | 4.4 | escaped | 55% of answers changed; 13 cases went fail→pass because the model stopped saying "I don't know" and answered from memory |
+| P3 | drop output-format spec | +0.7 | 4.4 | escaped (below MDE) | 27/60 replies no longer JSON |
+| P4 | delete a few-shot example | −1.0 | 4.4 | escaped | 7% of answers changed |
+| P5 | must → should | −2.7 | 4.4 | escaped | 5% of answers changed |
+| R1 | top-1 retrieval | **+34.0** | 4.4 | **KILLED** | 20 stable-pass cases failed |
+| R2 | shuffle rank order | −1.0 | 4.4 | escaped | retrieval order changed in 88% of cases |
+| R3 | inject wrong-year/tenant doc | −1.0 | 4.4 | escaped | decoy injected in 50/60 cases; 5 pass→fail, 6 fail→pass |
+| R4 | halve chunk overlap | +4.0 | 4.4 | escaped (below MDE) | retrieval changed in 50% of cases |
+| M1 | Haiku 5.5 → Haiku 4.5 | −4.3 / +4.0 | 5.8 / 6.8 | escaped (below MDE) | 20% / 35% of answers changed |
+| M2 | temperature 0 → 1 | — | — | N/A | not expressible on this backend |
+| M3 | max_tokens −40% | +2.3 / −1.0 | 5.8 / 6.8 | escaped (below MDE) | 5% / 20% of answers changed |
+| A1 | skip authorisation call | −1.0 | 5.2 | escaped | **47 restricted documents reached the model, in 17 of 20 cases** |
+| A2 | swap search ↔ read | **+24.0** | 5.2 | **KILLED** | 5 pass→fail |
+| A3 | read returns 503 | **+34.0** | 5.2 | **KILLED** | 49 errors returned |
+| A4 | remove search tool | **+14.0** | 5.2 | **KILLED** | 3 pass→fail |
+
+By surface: prompt 0/5 killed, retrieval 1/4, model 0/2, agent 3/4.
+
+Escapes below the MDE (a real drop, but too small to see): P3, R4, M1, M3. Escapes with
+no drop at all: P1, P2, P4, P5, R2, R3, A1.
+
+What stands out:
+
+* **The suite killed only the loud mutants**, the ones that break the pipeline
+  mechanically (R1, A2–A4).
+* **It rewards removing grounding.** P2 *raises* the score by 19 points: a golden-answer
+  suite with no abstention cases scores memorised answers as correct and "I don't know"
+  as wrong.
+* **It is blind to the access-control bypass.** A1 leaked restricted documents in 17 of 20
+  cases, and the score didn't move.
+
+**Spend.** Total API spend was **$0.463**:
+
+| step | cost |
+|---|---|
+| pilot: one baseline pass, later replayed from cache | $0.026 |
+| main run: stopped by the $0.42 cap before A3 and A4 ([`runs/run1-main.log`](runs/run1-main.log)) | $0.422 |
+| completion run: everything else replayed from cache ([`runs/run2-complete.log`](runs/run2-complete.log)) | $0.016 |
+
+`results.json` comes from the completion run. Its `spend` block counts only that
+invocation's new calls. Its `dirty: true` flag is caused by an untracked log file in the
+working tree at the time, not by code changes.
+
+Another reproduction note: the agent sub-suite was cut from n = 30 to n = 20 *before*
+any mutant ran, to fit a $0.50 budget.
 
 ## Limits
 
