@@ -105,7 +105,11 @@ class LLM:
         self._client = None
         if backend == "anthropic":
             import anthropic  # optional dependency
-            self._client = anthropic.Anthropic()
+            # Pin the endpoint: an inherited ANTHROPIC_BASE_URL (e.g. from a dev tool's own
+            # environment) must not silently redirect the run. Override explicitly if needed.
+            self._client = anthropic.Anthropic(
+                base_url=os.environ.get("SABOT_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+                api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
     # ---- public -----------------------------------------------------------
     def chat(self, *, model: str, system: str, messages: list[dict], tools: list[dict] | None,

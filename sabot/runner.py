@@ -15,7 +15,7 @@ from .agent import Agent
 from .config import MODEL_TIERS, SystemConfig, baseline
 from .data import DATASET_CONFIG, DATASET_ID, DATASET_LICENSE, DATASET_SPLIT, DATASET_URL, Dataset, load
 from .evals import PASS_F1, agent_pass, normalize, rag_pass
-from .llm import LLM
+from .llm import LLM, BudgetExceeded
 from .mutants import BY_ID, CATALOGUE, MutantNotApplied
 from .rag import RAG
 from .stats import ALPHA, POWER, is_killed, mcnemar, noise_floor
@@ -86,7 +86,7 @@ def witness(mid: str, sub: str, base0: list[dict], mut: list[dict]) -> dict:
     return w
 
 
-def run(backend: str = "anthropic", n_rag: int = 60, n_agent: int = 30, k: int = 5, r: int = 1,
+def run(backend: str = "anthropic", n_rag: int = 60, n_agent: int = 20, k: int = 5, r: int = 1,
         mutant_ids: list[str] | None = None, workers: int = 8, out: Path | None = None,
         cache: bool = True, max_usd: float | None = 0.45, log=print) -> dict:
     t0 = time.time()
@@ -121,7 +121,13 @@ def run(backend: str = "anthropic", n_rag: int = 60, n_agent: int = 30, k: int =
             results.append(rec)
             log(f"[sabot] {m.id} N/A: {e}")
             continue
-        runs = [run_suite(cfg, data, llm, f"mut:{m.id}:{j}", m.targets, workers) for j in range(r)]
+        try:
+            runs = [run_suite(cfg, data, llm, f"mut:{m.id}:{j}", m.targets, workers) for j in range(r)]
+        except BudgetExceeded as e:
+            rec.update(verdict="SKIPPED_BUDGET", reason=str(e))
+            results.append(rec)
+            log(f"[sabot] {m.id} skipped: {e}")
+            continue
         per = {}
         any_kill = False
         for s in m.targets:
@@ -201,7 +207,7 @@ def run(backend: str = "anthropic", n_rag: int = 60, n_agent: int = 30, k: int =
 
 
 def summarize(results: list[dict]) -> dict:
-    ran = [m for m in results if m["verdict"] != "N/A"]
+    ran = [m for m in results if m["verdict"] in ("KILLED", "ESCAPED")]
     by = {}
     for m in ran:
         d = by.setdefault(m["surface"], {"total": 0, "killed": 0, "escaped": 0})
@@ -209,7 +215,8 @@ def summarize(results: list[dict]) -> dict:
         d["killed" if m["verdict"] == "KILLED" else "escaped"] += 1
     killed = sum(m["verdict"] == "KILLED" for m in ran)
     esc = [m for m in ran if m["verdict"] == "ESCAPED"]
-    return {"mutants_total": len(results), "mutants_run": len(ran), "not_applicable": len(results) - len(ran),
+    return {"mutants_total": len(results), "mutants_run": len(ran), "not_applicable": sum(m["verdict"] == "N/A" for m in results),
+            "skipped_budget": [m["id"] for m in results if m["verdict"] == "SKIPPED_BUDGET"],
             "killed": killed, "escaped": len(esc),
             "escape_rate": (len(esc) / len(ran)) if ran else None,
             "escaped_below_mde": [m["id"] for m in esc if m.get("escape_kind") == "below_mde"],
@@ -235,8 +242,9 @@ def report(res: dict) -> str:
     L.append("")
     L.append(f"{'id':3s} {'surface':9s} {'mutant':48s} {'delta pts':>14s} {'crit':>6s}  verdict   answers changed")
     for m in res["mutants"]:
-        if m["verdict"] == "N/A":
-            L.append(f"{m['id']:3s} {m['surface']:9s} {m['name'][:48]:48s} {'':>14s} {'':>6s}  N/A       (not expressible on this backend)")
+        if m["verdict"] in ("N/A", "SKIPPED_BUDGET"):
+            why = "(not expressible on this backend)" if m["verdict"] == "N/A" else "(spend cap reached)"
+            L.append(f"{m['id']:3s} {m['surface']:9s} {m['name'][:48]:48s} {'':>14s} {'':>6s}  {m['verdict']:9s} {why}")
             continue
         ds = "/".join(f"{m['subsuites'][s]['delta'] * 100:+.1f}" for s in m["targets"])
         cr = "/".join(f"{m['subsuites'][s]['critical'] * 100:.1f}" for s in m["targets"])

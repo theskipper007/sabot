@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", help="offline fake backend; no API calls, no real numbers")
     r.add_argument("--backend", choices=["anthropic", "ollama", "fake"], default="anthropic")
     r.add_argument("--n-rag", type=int, default=60)
-    r.add_argument("--n-agent", type=int, default=30)
+    r.add_argument("--n-agent", type=int, default=20)
     r.add_argument("-k", type=int, default=5, help="baseline reruns for the noise floor (default 5)")
     r.add_argument("-r", type=int, default=1, help="runs per mutant (default 1)")
     r.add_argument("--mutants", default="", help="comma-separated ids, e.g. P1,R3 (default: all)")

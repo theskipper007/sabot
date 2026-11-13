@@ -44,8 +44,8 @@ the point: sabot tests the suite, and this is a typical suite.
 setting, validation split, from
 [`hotpotqa/hotpot_qa`](https://huggingface.co/datasets/hotpotqa/hotpot_qa) on Hugging Face.
 License: **CC BY-SA 4.0**. sabot takes the *first* rows in published order, with no
-filtering: rows 0–59 for RAG and 60–89 for the agent. The retrieval corpus is every
-context paragraph of those 90 questions (gold paragraphs plus HotpotQA's distractors),
+filtering: rows 0–59 for RAG and 60–79 for the agent. The retrieval corpus is every
+context paragraph of those 80 questions (gold paragraphs plus HotpotQA's distractors),
 deduplicated by title. `data/hotpotqa_distractor_validation_head.jsonl` holds rows 0–99
 and is redistributed under the same license.
 
@@ -163,7 +163,7 @@ _Filled in from the actual run. See `report.txt` and `results.json`._
 
 ## Limits
 
-* **One system, one suite, one dataset, small n.** n = 60 RAG + 30 agent cases. Δ and the
+* **One system, one suite, one dataset, small n.** n = 60 RAG + 20 agent cases (the agent n was cut from 30 to keep the whole run under a $0.50 budget, before any mutant ran). Δ and the
   MDE are about *this* suite on *this* system. The escape rate is not a universal
   constant. A stronger suite (abstention cases, citation checks, trace assertions) would
   kill more. That is the intended use: harden the suite, rerun sabot.
