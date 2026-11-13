@@ -1,0 +1,28 @@
+[project]
+name = "sabot"
+version = "0.1.0"
+description = "Mutation testing for LLM eval suites: break the system on purpose, see if your evals notice."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.70"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+sabot = "sabot.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sabot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
